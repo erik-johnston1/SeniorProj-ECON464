@@ -1,0 +1,201 @@
+---
+title: "ECON464_Cleaning_and_Analysis"
+author: "Erik Johnston"
+date: "2025-06-09"
+output: html_document
+---
+
+**Setup**
+
+```{r}
+library(tidyverse)
+library(fixest)
+library(broom)
+library(fixest)
+library(flextable)
+library(kableExtra)
+library(stargazer)
+library(modelsummary)
+```
+
+**Loading in Data**
+
+```{r}
+data_df <- read_csv("/Users/erikjohnston/Desktop/school/ECON 464/usa_00013.csv.gz")
+```
+
+**Cleaning Data**
+
+```{r}
+clean_df <- data_df %>% 
+  filter(MET2013 == 33100 | MET2013 == 41980) %>% 
+  mutate(post = ifelse(YEAR >= 2018, 1, 0)) %>% 
+  mutate(treatment = ifelse(MET2013 == 41980, 1, 0)) %>% 
+  filter(HHINCOME != 9999999) %>% 
+  filter(ROOMS > 0) %>% 
+  filter(EMPSTAT > 0 | EMPSTAT != 9) %>% 
+  mutate(EMPSTAT = ifelse(EMPSTAT >= 2, 0, 1)) %>% 
+  filter(VALUEH != 9999999) %>% 
+  mutate(treat_post = treatment*post) %>% 
+  mutate(homevalue_1999 = VALUEH * CPI99) %>% 
+  mutate(homevalue_2023 = homevalue_1999 * (303.9 / 166.6)) %>% 
+  mutate(log_homevalue = log(homevalue_2023))
+  
+```
+
+Model
+
+```{r}
+did_model <- lm(
+  log_homevalue ~ treatment + post + treat_post + 
+    HHINCOME + ROOMS + EMPSTAT,
+  data = clean_df,
+  weights = HHWT
+)
+
+didmodel_fe <- feols(
+    log_homevalue ~ treat_post + HHINCOME + ROOMS + EMPSTAT | YEAR,
+    data = clean_df,
+    weights = ~HHWT,
+    cluster = ~MET2013
+)
+
+summary(did_model)
+```
+
+```{r}
+summary(didmodel_fe)
+```
+Exponentiating
+```{r}
+coefs1 <- coef(didmodel_fe)
+coefs2 <- coef(did_model)
+
+percent_change1 <- (exp(coefs1) - 1) * 100
+percent_change2 <- (exp(coefs2) - 1) * 100
+
+round(percent_change1, 3)
+round(percent_change2, 3)
+```
+
+
+**Tables**
+
+Checking Distribution of Home Value
+
+```{r}
+PR_df <- clean_df %>% 
+  filter(MET2013 == 41980)
+
+Miami_df <- clean_df %>% 
+  filter(MET2013 == 33100)
+
+ggplot(PR_df, aes(x = VALUEH)) +
+  geom_histogram(binwidth = 10000, fill = "grey", color = "black") +
+  labs(title = "Distribution of Home Value in PR by Year", x = "Home Value", y = "Count") + 
+  scale_x_continuous(labels = scales::comma, limits = c(0, 1000000)) +
+  scale_y_continuous(labels = scales::comma) +
+  facet_wrap(~ YEAR, scales = "free_y") +
+  theme_minimal()
+
+ggplot(Miami_df, aes(x = VALUEH)) +
+  geom_histogram(binwidth = 10000, fill = "grey", color = "black") +
+  labs(title = "Distribution of Home Value in PR by Year", x = "Home Value", y = "Count") + 
+  scale_x_continuous(labels = scales::comma, limits = c(0, 1000000)) +
+  scale_y_continuous(labels = scales::comma) +
+  facet_wrap(~ YEAR, scales = "free_y") +
+  theme_minimal()
+```
+
+Checking Parallel Trends
+
+```{r}
+#Visualization
+summary_df <- clean_df %>% 
+  group_by(YEAR, MET2013) %>% 
+  summarize(mean_values = mean(log_homevalue),
+            median_values = median(log_homevalue)
+            ) %>% 
+  ungroup() %>% 
+  mutate(city = ifelse(MET2013 == 41980, "San Juan", "Miami"))
+
+par(mfrow = c(2,1))
+
+ggplot(summary_df, aes(x = YEAR, y = mean_values, color = city, group = city)) +
+  geom_line(size = 1) +  
+  geom_point(size = 2) +
+  labs(title = "Mean Home Value Over Time",
+       x = "Year",
+       y = "Mean Home Value",
+       color = "Location") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal()
+
+ggplot(summary_df, aes(x = YEAR, y = median_values, color = city, group = city)) +
+  geom_line(size = 1) +  
+  geom_point(size = 2) +
+  labs(title = "Median Home Value Over Time",
+       x = "Year",
+       y = "Median Home Value",
+       color = "Location") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal()
+
+#Formal Test
+pre_trends_test <- feols(log(VALUEH) ~ MET2013 * factor(YEAR), data = clean_df)
+
+summary(pre_trends_test)
+tidy(pre_trends_test)
+```
+
+Stylized Facts
+
+```{r}
+styl.fax_df <- clean_df %>% 
+  select(VALUEH, HHINCOME, ROOMS, EMPSTAT)
+datasummary_skim(styl.fax_df)
+
+
+summary_table <- clean_df %>%
+  select(VALUEH, HHINCOME, ROOMS) %>%
+  summarise(across(everything(), 
+                   list(Mean = ~mean(., na.rm = TRUE),
+                          Median = ~median(., na.rm = TRUE),
+                          SD = ~sd(., na.rm = TRUE),
+                          Min = ~min(., na.rm = TRUE),
+                          Max = ~max(., na.rm = TRUE),
+                          N = ~sum(!is.na(.))))) %>%
+  pivot_longer(cols = everything(),
+               names_to = c("Variable", ".value"),
+               names_sep = "_") %>%
+  kable(format = "html",
+        digits = 2,
+        caption = "Summary Statistics",
+        col.names = c("Variable", "Mean", "Median", "SD", "Min", "Max", "N")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Print table
+summary_table
+```
+
+Summary Stats Grouped
+
+```{r}
+summary_table <- clean_df %>%
+  mutate(city = ifelse(MET2013 == 41980, "San Juan", "Miami")) %>% 
+  select(city, VALUEH, HHINCOME, ROOMS, EMPSTAT) %>%
+  group_by(city) %>%  
+  summarise(across(everything(), 
+                   list(Mean = ~mean(., na.rm = TRUE)))) %>%  # Added missing )
+  pivot_longer(cols = -city,
+               names_to = c("Variable", ".value"),
+               names_sep = "_") %>%
+  pivot_wider(names_from = city, values_from = Mean) %>%
+  kable(format = "html",
+        digits = 2,
+        caption = "Mean Values by City",
+        col.names = c("Variable", "Miami", "San Juan")) %>%  
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+print(summary_table)
+```

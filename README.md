@@ -2,7 +2,7 @@
 ## Overview
 This repository contains the files related to my senior project research paper for the Economics major at Cal Poly SLO. This project investigates how hurriances impact housing markets in the San Juan Metropolitan Area (SJMA)
 
-I employ a difference-in-differences (DiD) framework to isloate the casual effect of Hurricanes Irma and Maria (2017) on housing prices in San Juan, PR by comparing this outcome variables in Miami, FL before and after the 2017 storms. By implemented two forms of the model (with and without fized effects), the analysis disentangles storm-driven impacts on housing prcies from broader economic factors.
+I employ a difference-in-differences (DiD) framework to isloate the casual effect of Hurricanes Irma and Maria (2017) on housing prices in San Juan, PR by comparing the outcome variables in San Juan, PR and Miami, FL before and after the 2017 storms. By implemented two forms of the model (with and without fized effects), the analysis disentangles storm-driven impacts on housing prcies from broader economic factors.
 ## Research Question
 Do hurricanes causally increase housing demand and prices in Puerto Rico, or do observed changes reflect other local economic factors?
 
